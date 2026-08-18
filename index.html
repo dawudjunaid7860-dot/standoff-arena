@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Standoff Arena</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="hud">
+    <div id="crosshair"></div>
+
+    <div id="health-bars">
+      <div class="health-row player-health">
+        <span class="health-label">YOU</span>
+        <div class="health-bar-track"><div id="player-health-fill" class="health-bar-fill"></div></div>
+      </div>
+      <div class="health-row enemy-health">
+        <div class="health-bar-track"><div id="enemy-health-fill" class="health-bar-fill"></div></div>
+        <span class="health-label">ENEMY</span>
+      </div>
+    </div>
+
+    <div id="hit-marker"></div>
+  </div>
+
+  <div id="damage-flash"></div>
+
+  <div id="start-screen" class="overlay">
+    <h1>STANDOFF ARENA</h1>
+    <p>WASD to move &middot; Mouse to aim &middot; Click to shoot</p>
+    <button id="start-button">Click to Start</button>
+  </div>
+
+  <div id="end-screen" class="overlay hidden">
+    <h1 id="end-title">YOU WIN</h1>
+    <button id="restart-button">Play Again</button>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.DS_Store
+
+# Only glTF is actually loaded by the game; the other export formats are
+# ~80MB of unused duplicates kept on disk for reference but not tracked.
+public/assets/**/Blends/
+public/assets/**/FBX/
+public/assets/**/OBJ/
