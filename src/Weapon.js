@@ -1,24 +1,40 @@
 import { ASSETS } from './AssetLoader.js';
 import { normalizeScale, enableShadows } from './utils.js';
 
-export const MAG_SIZE = 8;
-export const RESERVE_START = 24;
-export const RELOAD_TIME = 1.3;
-export const FIRE_COOLDOWN = 0.22;
-export const DAMAGE = 12;
-
-const GUN_SIZE = 0.32;
-// The pistol model's longest axis (from the raw mesh bounds) runs along
-// local X, with the origin sitting near the grip and the muzzle out toward
-// -X. Yawing -90 degrees points that muzzle down the character's own
-// forward axis (-Z) once the gun is parented to them.
+// Every gun's longest raw-mesh axis runs along local X (confirmed by
+// checking each model's accessor bounds), origin near the grip, muzzle
+// toward -X. Yawing -90 degrees points that muzzle down the character's
+// own forward axis (-Z) once the gun is parented to them.
 const GUN_FORWARD_ROTATION_Y = -Math.PI / 2;
 
-// Attaches a pistol to a character group at an approximate hand position.
-// Returns the gun object plus its resting local Z (for recoil animation).
-export async function attachPistol(assetLoader, characterGroup, characterHeight) {
-  const gun = await assetLoader.load(ASSETS.guns.pistol);
-  normalizeScale(gun, GUN_SIZE);
+export const WEAPONS = {
+  pistol: {
+    id: 'pistol', name: 'PISTOL', icon: 'P', assetKey: 'pistol', scale: 0.32,
+    damage: 12, magSize: 8, reserveMax: 24, fireCooldown: 0.22, pellets: 1, spread: 0,
+  },
+  smg: {
+    id: 'smg', name: 'SMG', icon: 'SM', assetKey: 'smg', scale: 0.42,
+    damage: 8, magSize: 25, reserveMax: 75, fireCooldown: 0.09, pellets: 1, spread: 0.035,
+  },
+  shotgun: {
+    id: 'shotgun', name: 'SHOTGUN', icon: 'SG', assetKey: 'shotgun', scale: 0.55,
+    damage: 7, magSize: 6, reserveMax: 18, fireCooldown: 0.7, pellets: 6, spread: 0.14,
+  },
+  sniper: {
+    id: 'sniper', name: 'SNIPER', icon: 'SR', assetKey: 'sniper', scale: 0.7,
+    damage: 55, magSize: 4, reserveMax: 12, fireCooldown: 1.15, pellets: 1, spread: 0,
+  },
+  ak: {
+    id: 'ak', name: 'AK-47', icon: 'AK', assetKey: 'ak', scale: 0.5,
+    damage: 14, magSize: 30, reserveMax: 90, fireCooldown: 0.12, pellets: 1, spread: 0.02,
+  },
+};
+
+// Attaches a weapon model to a character group at an approximate hand
+// position. Returns the gun object plus its resting local Z (for recoil).
+export async function attachWeaponModel(assetLoader, characterGroup, characterHeight, weaponDef) {
+  const gun = await assetLoader.load(ASSETS.guns[weaponDef.assetKey]);
+  normalizeScale(gun, weaponDef.scale);
   gun.rotation.y = GUN_FORWARD_ROTATION_Y;
   gun.position.set(0.32, characterHeight * 0.56, 0.14);
   enableShadows(gun);

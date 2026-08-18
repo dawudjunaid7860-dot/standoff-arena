@@ -34,21 +34,45 @@ export class HUD {
       player: document.querySelector('#player-card-player .weapon-row'),
       enemy: document.querySelector('#player-card-enemy .weapon-row'),
     };
+    this.weaponIcon = {
+      player: document.getElementById('weapon-icon-player'),
+      enemy: document.getElementById('weapon-icon-enemy'),
+    };
+    this.weaponName = {
+      player: document.getElementById('weapon-name-player'),
+      enemy: document.getElementById('weapon-name-enemy'),
+    };
+    this.downTag = {
+      player: document.getElementById('down-tag-player'),
+      enemy: document.getElementById('down-tag-enemy'),
+    };
 
     this.timerValue = document.getElementById('timer-value');
     this.hitMarker = document.getElementById('hit-marker');
+    this.damageIndicator = document.getElementById('damage-indicator');
     this.startScreen = document.getElementById('start-screen');
     this.endScreen = document.getElementById('end-screen');
     this.endTitle = document.getElementById('end-title');
     this.startButton = document.getElementById('start-button');
     this.restartButton = document.getElementById('restart-button');
     this.damageFlash = document.getElementById('damage-flash');
+    this.loadingScreen = document.getElementById('loading-screen');
+    this.loadingBarFill = document.getElementById('loading-bar-fill');
+    this.loadingText = document.getElementById('loading-text');
+    this.respawnOverlay = document.getElementById('respawn-overlay');
+    this.respawnSeconds = document.getElementById('respawn-seconds');
+    this.pauseButton = document.getElementById('pause-button');
+    this.pauseOverlay = document.getElementById('pause-overlay');
+    this.resumeButton = document.getElementById('resume-button');
+    this.quitButton = document.getElementById('quit-button');
+    this.difficultyButtons = [...document.querySelectorAll('.difficulty-btn')];
 
     this._hitMarkerTimeout = null;
     this._damageFlashTimeout = null;
+    this._damageIndicatorTimeout = null;
   }
 
-  setPlayerCard(side, { lives, healthPct, ammo, magSize, reserve, reloading }) {
+  setPlayerCard(side, { lives, healthPct, ammo, magSize, reserve, reloading, weaponName, weaponIcon, isDown }) {
     this.lives[side].textContent = lives;
 
     const filled = Math.round((healthPct / 100) * PIP_COUNT);
@@ -61,6 +85,11 @@ export class HUD {
     this.ammoMag[side].textContent = magSize;
     this.ammoReserve[side].textContent = reserve;
     this.weaponRow[side].querySelector('.weapon-ammo').classList.toggle('reloading', !!reloading);
+
+    if (weaponName) this.weaponName[side].textContent = weaponName;
+    if (weaponIcon) this.weaponIcon[side].textContent = weaponIcon;
+
+    this.downTag[side].classList.toggle('hidden', !isDown);
   }
 
   setTimer(seconds) {
@@ -86,6 +115,35 @@ export class HUD {
     this._damageFlashTimeout = setTimeout(() => this.damageFlash.classList.remove('show'), 350);
   }
 
+  // angleDeg: 0 = threat is "ahead" on screen, increases clockwise.
+  flashDamageDirection(angleDeg) {
+    this.damageIndicator.style.transform = `rotate(${angleDeg}deg)`;
+    this.damageIndicator.classList.remove('show');
+    void this.damageIndicator.offsetWidth;
+    this.damageIndicator.classList.add('show');
+    clearTimeout(this._damageIndicatorTimeout);
+    this._damageIndicatorTimeout = setTimeout(() => this.damageIndicator.classList.remove('show'), 1000);
+  }
+
+  setLoadingProgress(pct) {
+    const clamped = Math.min(100, Math.max(0, Math.round(pct)));
+    this.loadingBarFill.style.width = `${clamped}%`;
+    this.loadingText.textContent = `Loading… ${clamped}%`;
+  }
+
+  hideLoadingScreen() {
+    this.loadingScreen.classList.add('hidden');
+  }
+
+  showRespawnCountdown(seconds) {
+    this.respawnOverlay.classList.remove('hidden');
+    this.respawnSeconds.textContent = Math.max(1, Math.ceil(seconds));
+  }
+
+  hideRespawnCountdown() {
+    this.respawnOverlay.classList.add('hidden');
+  }
+
   showStart(onStart) {
     this.startScreen.classList.remove('hidden');
     this.endScreen.classList.add('hidden');
@@ -94,6 +152,31 @@ export class HUD {
 
   hideStart() {
     this.startScreen.classList.add('hidden');
+  }
+
+  // Wires the Easy/Normal/Hard buttons; onChange(difficulty) fires on selection.
+  bindDifficultySelect(onChange) {
+    for (const btn of this.difficultyButtons) {
+      btn.onclick = () => {
+        for (const b of this.difficultyButtons) b.classList.remove('selected');
+        btn.classList.add('selected');
+        onChange(btn.dataset.difficulty);
+      };
+    }
+  }
+
+  bindPause(onPause, onResume, onQuit) {
+    this.pauseButton.onclick = onPause;
+    this.resumeButton.onclick = onResume;
+    this.quitButton.onclick = onQuit;
+  }
+
+  showPause() {
+    this.pauseOverlay.classList.remove('hidden');
+  }
+
+  hidePause() {
+    this.pauseOverlay.classList.add('hidden');
   }
 
   // winner: 'player' | 'enemy' | 'draw'

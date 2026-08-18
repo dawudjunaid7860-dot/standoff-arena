@@ -7,16 +7,26 @@ export class AssetLoader {
   constructor() {
     this.loader = new GLTFLoader();
     this.cache = new Map();
+    this.loaded = 0;
+    this.total = 0;
   }
 
   load(url) {
+    this.total += 1;
     if (!this.cache.has(url)) {
       const promise = new Promise((resolve, reject) => {
         this.loader.load(url, (gltf) => resolve(gltf.scene), undefined, reject);
       });
       this.cache.set(url, promise);
     }
-    return this.cache.get(url).then((original) => original.clone(true));
+    return this.cache.get(url).then((original) => {
+      this.loaded += 1;
+      return original.clone(true);
+    });
+  }
+
+  get progress() {
+    return this.total === 0 ? 0 : this.loaded / this.total;
   }
 }
 
@@ -27,6 +37,10 @@ export const ASSETS = {
   },
   guns: {
     pistol: '/assets/Guns/glTF/Pistol.gltf',
+    smg: '/assets/Guns/glTF/SMG.gltf',
+    shotgun: '/assets/Guns/glTF/Shotgun.gltf',
+    sniper: '/assets/Guns/glTF/Sniper.gltf',
+    ak: '/assets/Guns/glTF/AK.gltf',
   },
   environment: {
     crate: '/assets/Environment/glTF/Crate.gltf',
@@ -53,6 +67,8 @@ export const ASSETS = {
     gasCan: '/assets/Environment/glTF/GasCan.gltf',
     gasTank: '/assets/Environment/glTF/GasTank.gltf',
     explodingBarrel: '/assets/Environment/glTF/ExplodingBarrel.gltf',
+    landmine: '/assets/Environment/glTF/Landmine.gltf',
+    bearTrapClosed: '/assets/Environment/glTF/BearTrap_Closed.gltf',
     sign: '/assets/Environment/glTF/Sign.gltf',
     fence: '/assets/Environment/glTF/Fence.gltf',
     fenceLong: '/assets/Environment/glTF/Fence_Long.gltf',

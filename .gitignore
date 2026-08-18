@@ -11,3 +11,7 @@ public/assets/**/OBJ/
 # Raw Kenney onscreen-controls source dump (8 styles x sizes, ~7MB); only
 # the 4 PNGs actually used are copied into public/assets/mobile-controls/.
 /mobile-controls-1 (3)/
+
+# Raw sound file dropped at the project root; the copy actually used by the
+# game lives at public/assets/sounds/gunshot.mp3.
+/universfield-gunshot-352466 (1).mp3

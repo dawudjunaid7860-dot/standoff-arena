@@ -1,22 +1,30 @@
 import * as THREE from 'three';
 import { ASSETS } from './AssetLoader.js';
 import { normalizeScale, placeOnGround, enableShadows, clamp, isDescendantOf } from './utils.js';
-import { attachPistol, MAG_SIZE, RESERVE_START, RELOAD_TIME, FIRE_COOLDOWN, DAMAGE } from './Weapon.js';
+import { WEAPONS, attachWeaponModel } from './Weapon.js';
 import { resolveCollisions } from './Collision.js';
+import { HitReaction } from './HitReaction.js';
 
 const HEIGHT = 1.8;
 const RADIUS = 0.42;
-const SPEED = 4.2;
+const BASE_SPEED = 4.2;
 const APPROACH_DIST = 16;
 const RETREAT_DIST = 7;
 const MAX_SHOOT_RANGE = 34;
 const MAX_RANGE = 60;
-const AIM_SPREAD = 0.1; // radians of random inaccuracy either side of the true aim
+const BASE_AIM_SPREAD = 0.1; // radians of random inaccuracy either side of the true aim
 const CHEST_HEIGHT_FACTOR = 0.55;
+const RELOAD_TIME = 1.3;
 
 // If the model's front doesn't line up with facing-the-player after
 // testing, nudge this by Math.PI or Math.PI / 2.
 const FACE_OFFSET = 0;
+
+export const DIFFICULTIES = {
+  easy: { speed: 0.8, aimSpread: 2.2, cooldown: 1.4, damage: 0.85 },
+  normal: { speed: 1, aimSpread: 1, cooldown: 1, damage: 1 },
+  hard: { speed: 1.15, aimSpread: 0.5, cooldown: 0.72, damage: 1.15 },
+};
 
 export class Enemy {
   constructor(scene, bounds, colliders) {
@@ -26,28 +34,35 @@ export class Enemy {
 
     this.model = null;
     this.gun = null;
+    this.hitReaction = null;
     this._restGunZ = 0;
     this._recoil = 0;
 
+    this.weaponDef = WEAPONS.pistol;
     this.maxHealth = 100;
     this.health = this.maxHealth;
     this.maxLives = 3;
     this.lives = this.maxLives;
     this.isDown = false;
 
-    this.magSize = MAG_SIZE;
-    this.ammo = MAG_SIZE;
-    this.reserve = RESERVE_START;
+    this.magSize = this.weaponDef.magSize;
+    this.ammo = this.weaponDef.magSize;
+    this.reserve = this.weaponDef.reserveMax;
     this.isReloading = false;
     this._reloadTimer = 0;
 
     this.raycaster = new THREE.Raycaster();
     this.raycaster.far = MAX_RANGE;
 
+    this.difficulty = DIFFICULTIES.normal;
     this._shootCooldown = this._randomCooldown();
     this._strafeDir = 1;
     this._strafeTimer = this._randomStrafeInterval();
     this._pendingShot = null;
+  }
+
+  setDifficulty(level) {
+    this.difficulty = DIFFICULTIES[level] || DIFFICULTIES.normal;
   }
 
   async load(assetLoader, spawnPosition) {
@@ -57,8 +72,9 @@ export class Enemy {
     enableShadows(model);
     this.scene.add(model);
     this.model = model;
+    this.hitReaction = new HitReaction(model);
 
-    this.gun = await attachPistol(assetLoader, model, HEIGHT);
+    this.gun = await attachWeaponModel(assetLoader, model, HEIGHT, this.weaponDef);
     this._restGunZ = this.gun.position.z;
   }
 
@@ -67,7 +83,7 @@ export class Enemy {
     this.lives = this.maxLives;
     this.isDown = false;
     this.ammo = this.magSize;
-    this.reserve = RESERVE_START;
+    this.reserve = this.weaponDef.reserveMax;
     this.isReloading = false;
     this._reloadTimer = 0;
     this._shootCooldown = this._randomCooldown();
@@ -78,7 +94,7 @@ export class Enemy {
     this.health = this.maxHealth;
     this.isDown = false;
     this.ammo = this.magSize;
-    this.reserve = RESERVE_START;
+    this.reserve = this.weaponDef.reserveMax;
     this.isReloading = false;
     this._reloadTimer = 0;
     this._shootCooldown = this._randomCooldown();
@@ -92,7 +108,7 @@ export class Enemy {
   }
 
   _randomCooldown() {
-    return 0.9 + Math.random() * 0.9;
+    return (0.9 + Math.random() * 0.9) * this.difficulty.cooldown;
   }
 
   _randomStrafeInterval() {
@@ -100,9 +116,11 @@ export class Enemy {
   }
 
   update(delta, playerPosition, playerModel, obstacles) {
+    if (this.hitReaction) this.hitReaction.update(delta);
     this._pendingShot = null;
     if (!this.model || this.isDown) return;
 
+    const speed = BASE_SPEED * this.difficulty.speed;
     const pos = this.model.position;
     const dx = playerPosition.x - pos.x;
     const dz = playerPosition.z - pos.z;
@@ -132,7 +150,7 @@ export class Enemy {
       moveZ = dirX * this._strafeDir;
     }
 
-    const resolved = resolveCollisions(pos.x + moveX * SPEED * delta, pos.z + moveZ * SPEED * delta, RADIUS, this.colliders);
+    const resolved = resolveCollisions(pos.x + moveX * speed * delta, pos.z + moveZ * speed * delta, RADIUS, this.colliders);
     pos.x = clamp(resolved.x, this.bounds.minX, this.bounds.maxX);
     pos.z = clamp(resolved.z, this.bounds.minZ, this.bounds.maxZ);
 
@@ -160,7 +178,7 @@ export class Enemy {
     this._recoil = 1;
 
     const baseAngle = Math.atan2(dirX, dirZ);
-    const spread = (Math.random() * 2 - 1) * AIM_SPREAD;
+    const spread = (Math.random() * 2 - 1) * BASE_AIM_SPREAD * this.difficulty.aimSpread;
     const angle = baseAngle + spread;
     const aimDirX = Math.sin(angle);
     const aimDirZ = Math.cos(angle);
@@ -172,10 +190,10 @@ export class Enemy {
     const hits = this.raycaster.intersectObjects([playerModel, ...(obstacles || [])], true);
 
     if (hits.length > 0 && isDescendantOf(hits[0].object, playerModel)) {
-      return { hit: true, damage: DAMAGE, origin, point: hits[0].point };
+      return { hit: true, damage: Math.round(this.weaponDef.damage * this.difficulty.damage), origin, point: hits[0].point };
     }
     const point = hits.length > 0 ? hits[0].point : origin.clone().addScaledVector(dir, dist + 5);
-    return { hit: false, origin, point };
+    return { hit: false, origin, point, blockedObject: hits.length > 0 ? hits[0].object : null };
   }
 
   // Returns the shot fired this frame ({ hit, damage, origin, point }), or null.
@@ -203,9 +221,10 @@ export class Enemy {
     this.reserve -= take;
   }
 
-  takeDamage(amount) {
+  takeDamage(amount, fromPosition) {
     if (this.isDown) return this.health;
     this.health = Math.max(0, this.health - amount);
+    if (this.hitReaction && fromPosition) this.hitReaction.trigger(fromPosition, this.model.position);
     return this.health;
   }
 

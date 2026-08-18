@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import { ASSETS } from './AssetLoader.js';
 import { normalizeScale, placeOnGround, enableShadows, mulberry32 } from './utils.js';
 import { buildBoxCollider } from './Collision.js';
+import { Hazards, isExplosiveKey, isMineKey } from './Hazards.js';
 
-const ARENA_HALF = 34;
+export const ARENA_HALF = 34;
 const WALL_HEIGHT = 5;
 const WALL_THICKNESS = 1;
 const MOVEMENT_INSET = 2.5;
@@ -28,6 +29,7 @@ export class Arena {
     // Solid meshes that block bullets as well as movement (walls + large
     // cover), used for line-of-sight raycasts so shots can't pass through cover.
     this.obstacleModels = [];
+    this.hazards = new Hazards();
     this.bounds = {
       minX: -ARENA_HALF + MOVEMENT_INSET,
       maxX: ARENA_HALF - MOVEMENT_INSET,
@@ -36,11 +38,11 @@ export class Arena {
     };
   }
 
-  async build(spawnZones) {
+  async build(spawnZones, extraAvoidZones = []) {
     this._addLighting();
     this._addGround();
     this._addWalls();
-    await this._scatterProps(spawnZones);
+    await this._scatterProps(spawnZones, extraAvoidZones);
   }
 
   _addLighting() {
@@ -102,7 +104,7 @@ export class Arena {
   // Rejection-samples positions inside the arena, keeping cover away from
   // spawn points and from each other, using a fixed seed so the layout is
   // stable across reloads instead of reshuffling every time.
-  async _scatterProps(spawnZones) {
+  async _scatterProps(spawnZones, extraAvoidZones) {
     const rng = mulberry32(LAYOUT_SEED);
     const placedSpots = [];
     const jobs = [];
@@ -125,7 +127,10 @@ export class Arena {
       return null;
     };
 
-    const spawnAvoidance = spawnZones.map((p) => ({ x: p.x, z: p.z, r: 9 }));
+    const spawnAvoidance = [
+      ...spawnZones.map((p) => ({ x: p.x, z: p.z, r: 9 })),
+      ...extraAvoidZones.map((p) => ({ x: p.x, z: p.z, r: 4 })),
+    ];
 
     // Buildings: ringed around the mid-field for sightline-blocking cover.
     const buildingCount = 7;
@@ -154,7 +159,10 @@ export class Arena {
     }
 
     // Small non-blocking clutter for visual density.
-    const looseAvoidance = spawnZones.map((p) => ({ x: p.x, z: p.z, r: 5 }));
+    const looseAvoidance = [
+      ...spawnZones.map((p) => ({ x: p.x, z: p.z, r: 5 })),
+      ...extraAvoidZones.map((p) => ({ x: p.x, z: p.z, r: 3 })),
+    ];
     for (let i = 0; i < 20; i++) {
       const spot = tryFindSpot(ARENA_HALF - 2, 2, looseAvoidance);
       if (!spot) continue;
@@ -162,6 +170,14 @@ export class Arena {
       const size = key === 'streetLight' ? 4.5 : 0.6 + rng() * 0.8;
       placedSpots.push({ x: spot.x, z: spot.z, r: size * 0.4 });
       jobs.push({ key, x: spot.x, z: spot.z, size, rotY: rng() * Math.PI * 2, collides: false });
+    }
+
+    // Mines: low-profile, non-blocking, proximity-triggered hazards.
+    for (let i = 0; i < 4; i++) {
+      const spot = tryFindSpot(ARENA_HALF - 6, 6, looseAvoidance);
+      if (!spot) continue;
+      placedSpots.push({ x: spot.x, z: spot.z, r: 1 });
+      jobs.push({ key: 'landmine', x: spot.x, z: spot.z, size: 0.5, rotY: rng() * Math.PI * 2, collides: false });
     }
 
     await Promise.all(
@@ -175,6 +191,11 @@ export class Arena {
         if (job.collides) {
           this.colliders.push(buildBoxCollider(model));
           this.obstacleModels.push(model);
+        }
+        if (isExplosiveKey(job.key)) {
+          this.hazards.registerExplosive(model, model.position);
+        } else if (isMineKey(job.key)) {
+          this.hazards.registerMine(model, model.position);
         }
       })
     );

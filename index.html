@@ -7,6 +7,12 @@
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
+  <div id="loading-screen">
+    <h1>STANDOFF ARENA</h1>
+    <div id="loading-bar-track"><div id="loading-bar-fill"></div></div>
+    <p id="loading-text">Loading&hellip; 0%</p>
+  </div>
+
   <div id="hud">
     <div id="player-card-player" class="player-card side-left team-green">
       <div class="card-header">
@@ -18,16 +24,18 @@
         <div class="health-pips" id="pips-player"></div>
       </div>
       <div class="weapon-row">
-        <span class="weapon-icon">P</span>
-        <span class="weapon-name">PISTOL</span>
+        <span class="weapon-icon" id="weapon-icon-player">P</span>
+        <span class="weapon-name" id="weapon-name-player">PISTOL</span>
         <span class="weapon-ammo">
           <span class="ammo-current" id="ammo-current-player">8</span>/<span class="ammo-mag" id="ammo-mag-player">8</span>
           <span class="ammo-reserve">[<span id="ammo-reserve-player">24</span>]</span>
         </span>
       </div>
+      <div class="down-tag hidden" id="down-tag-player">ELIMINATED</div>
     </div>
 
     <div id="timer-pill">TIME: <span id="timer-value">02:00</span></div>
+    <button id="pause-button" aria-label="Pause">❚❚</button>
 
     <div id="player-card-enemy" class="player-card side-right team-red">
       <div class="card-header">
@@ -39,19 +47,26 @@
         <div class="health-pips" id="pips-enemy"></div>
       </div>
       <div class="weapon-row">
-        <span class="weapon-icon">P</span>
-        <span class="weapon-name">PISTOL</span>
+        <span class="weapon-icon" id="weapon-icon-enemy">P</span>
+        <span class="weapon-name" id="weapon-name-enemy">PISTOL</span>
         <span class="weapon-ammo">
           <span class="ammo-current" id="ammo-current-enemy">8</span>/<span class="ammo-mag" id="ammo-mag-enemy">8</span>
           <span class="ammo-reserve">[<span id="ammo-reserve-enemy">24</span>]</span>
         </span>
       </div>
+      <div class="down-tag hidden" id="down-tag-enemy">ELIMINATED</div>
     </div>
 
     <div id="hit-marker"></div>
+    <div id="damage-indicator"></div>
+    <canvas id="minimap" width="150" height="150"></canvas>
   </div>
 
   <div id="damage-flash"></div>
+
+  <div id="respawn-overlay" class="hidden">
+    <p>RESPAWNING IN <span id="respawn-seconds">2</span></p>
+  </div>
 
   <div id="touch-controls" class="hidden">
     <div id="joystick-base">
@@ -65,10 +80,24 @@
     <p>Rotate your device to landscape to play</p>
   </div>
 
-  <div id="start-screen" class="overlay">
+  <div id="start-screen" class="overlay hidden">
     <h1>STANDOFF ARENA</h1>
-    <p>WASD to move &middot; Mouse to aim &middot; Click to shoot &middot; R to reload</p>
+    <p id="start-instructions">WASD to move &middot; Mouse to aim &middot; Click to shoot &middot; R to reload</p>
+    <div id="difficulty-select">
+      <span class="difficulty-label">DIFFICULTY</span>
+      <div class="difficulty-buttons">
+        <button class="difficulty-btn" data-difficulty="easy">EASY</button>
+        <button class="difficulty-btn selected" data-difficulty="normal">NORMAL</button>
+        <button class="difficulty-btn" data-difficulty="hard">HARD</button>
+      </div>
+    </div>
     <button id="start-button">Click to Start</button>
+  </div>
+
+  <div id="pause-overlay" class="overlay hidden">
+    <h1>PAUSED</h1>
+    <button id="resume-button">Resume</button>
+    <button id="quit-button">Quit to Menu</button>
   </div>
 
   <div id="end-screen" class="overlay hidden">

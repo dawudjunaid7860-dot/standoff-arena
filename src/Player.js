@@ -1,14 +1,16 @@
 import * as THREE from 'three';
 import { ASSETS } from './AssetLoader.js';
 import { normalizeScale, placeOnGround, enableShadows, clamp, isDescendantOf } from './utils.js';
-import { attachPistol, MAG_SIZE, RESERVE_START, RELOAD_TIME, FIRE_COOLDOWN, DAMAGE } from './Weapon.js';
+import { WEAPONS, attachWeaponModel } from './Weapon.js';
 import { resolveCollisions } from './Collision.js';
+import { HitReaction } from './HitReaction.js';
 
 const HEIGHT = 1.8;
 const RADIUS = 0.42;
 const MOVE_SPEED = 7;
 const MAX_RANGE = 60;
 const CHEST_HEIGHT_FACTOR = 0.55;
+const RELOAD_TIME = 1.3;
 
 // If the model's front doesn't line up with the aim direction after
 // testing, nudge this by Math.PI or Math.PI / 2.
@@ -22,6 +24,7 @@ export class Player {
 
     this.model = null;
     this.gun = null;
+    this.hitReaction = null;
     this._restGunZ = 0;
     this._recoil = 0;
 
@@ -31,9 +34,10 @@ export class Player {
     this.lives = this.maxLives;
     this.isDown = false;
 
-    this.magSize = MAG_SIZE;
-    this.ammo = MAG_SIZE;
-    this.reserve = RESERVE_START;
+    this.weaponDef = WEAPONS.pistol;
+    this.magSize = this.weaponDef.magSize;
+    this.ammo = this.weaponDef.magSize;
+    this.reserve = this.weaponDef.reserveMax;
     this.isReloading = false;
     this._reloadTimer = 0;
 
@@ -50,20 +54,33 @@ export class Player {
     enableShadows(model);
     this.scene.add(model);
     this.model = model;
+    this.hitReaction = new HitReaction(model);
 
-    this.gun = await attachPistol(assetLoader, model, HEIGHT);
+    this.gun = await attachWeaponModel(assetLoader, model, HEIGHT, this.weaponDef);
+    this._restGunZ = this.gun.position.z;
+    this._assetLoader = assetLoader;
+  }
+
+  async equipWeapon(weaponDef) {
+    if (this.gun) this.model.remove(this.gun);
+    this.weaponDef = weaponDef;
+    this.magSize = weaponDef.magSize;
+    this.ammo = weaponDef.magSize;
+    this.reserve = weaponDef.reserveMax;
+    this.isReloading = false;
+    this._reloadTimer = 0;
+    this.gun = await attachWeaponModel(this._assetLoader, this.model, HEIGHT, weaponDef);
     this._restGunZ = this.gun.position.z;
   }
 
-  reset(spawnPosition) {
+  async reset(spawnPosition) {
     this.health = this.maxHealth;
     this.lives = this.maxLives;
     this.isDown = false;
-    this.ammo = this.magSize;
-    this.reserve = RESERVE_START;
     this.isReloading = false;
     this._reloadTimer = 0;
     this.cooldown = 0;
+    await this.equipWeapon(WEAPONS.pistol);
     this._placeAt(spawnPosition);
   }
 
@@ -71,7 +88,7 @@ export class Player {
     this.health = this.maxHealth;
     this.isDown = false;
     this.ammo = this.magSize;
-    this.reserve = RESERVE_START;
+    this.reserve = this.weaponDef.reserveMax;
     this.isReloading = false;
     this._reloadTimer = 0;
     this._placeAt(spawnPosition);
@@ -84,6 +101,7 @@ export class Player {
   }
 
   update(delta, input, aimWorldPoint) {
+    if (this.hitReaction) this.hitReaction.update(delta);
     if (this.isDown) return;
 
     const pos = this.model.position;
@@ -127,25 +145,40 @@ export class Player {
     return !this.isDown && this.cooldown <= 0 && !this.isReloading && this.ammo > 0;
   }
 
-  // obstacles: solid props/walls that can block the shot before it reaches the target.
+  // obstacles: solid props/walls that can block a pellet before it reaches the target.
+  // Returns { origin, pellets: [{ hit, damage, point }, ...] } — multiple pellets for
+  // shotgun-type weapons, one for everything else.
   shoot(targetObject, obstacles) {
-    this.cooldown = FIRE_COOLDOWN;
+    const def = this.weaponDef;
+    this.cooldown = def.fireCooldown;
     this.ammo -= 1;
     this._recoil = 1;
 
     const pos = this.model.position;
     const origin = new THREE.Vector3(pos.x, HEIGHT * CHEST_HEIGHT_FACTOR, pos.z);
-    const dir = new THREE.Vector3(this.aimPoint.x - origin.x, 0, this.aimPoint.z - origin.z);
-    if (dir.lengthSq() < 0.0001) dir.set(0, 0, -1);
-    dir.normalize();
+    const baseDir = new THREE.Vector3(this.aimPoint.x - origin.x, 0, this.aimPoint.z - origin.z);
+    if (baseDir.lengthSq() < 0.0001) baseDir.set(0, 0, -1);
+    baseDir.normalize();
+    const baseAngle = Math.atan2(baseDir.x, baseDir.z);
 
-    this.raycaster.set(origin, dir);
-    const hits = this.raycaster.intersectObjects([targetObject, ...(obstacles || [])], true);
-    if (hits.length > 0 && isDescendantOf(hits[0].object, targetObject)) {
-      return { hit: true, damage: DAMAGE, point: hits[0].point, origin };
+    const targets = [targetObject, ...(obstacles || [])];
+    const pellets = [];
+    for (let i = 0; i < def.pellets; i++) {
+      const spread = def.spread > 0 ? (Math.random() * 2 - 1) * def.spread : 0;
+      const angle = baseAngle + spread;
+      const dir = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
+
+      this.raycaster.set(origin, dir);
+      const hits = this.raycaster.intersectObjects(targets, true);
+      if (hits.length > 0 && isDescendantOf(hits[0].object, targetObject)) {
+        pellets.push({ hit: true, damage: def.damage, point: hits[0].point });
+      } else {
+        const point = hits.length > 0 ? hits[0].point : origin.clone().addScaledVector(dir, MAX_RANGE);
+        pellets.push({ hit: false, point, blockedObject: hits.length > 0 ? hits[0].object : null });
+      }
     }
-    const point = hits.length > 0 ? hits[0].point : origin.clone().addScaledVector(dir, MAX_RANGE);
-    return { hit: false, point, origin };
+
+    return { origin, pellets };
   }
 
   canReload() {
@@ -166,9 +199,10 @@ export class Player {
     this.reserve -= take;
   }
 
-  takeDamage(amount) {
+  takeDamage(amount, fromPosition) {
     if (this.isDown) return this.health;
     this.health = Math.max(0, this.health - amount);
+    if (this.hitReaction && fromPosition) this.hitReaction.trigger(fromPosition, this.model.position);
     return this.health;
   }
 
