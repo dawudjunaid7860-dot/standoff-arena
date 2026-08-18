@@ -7,3 +7,7 @@ dist/
 public/assets/**/Blends/
 public/assets/**/FBX/
 public/assets/**/OBJ/
+
+# Raw Kenney onscreen-controls source dump (8 styles x sizes, ~7MB); only
+# the 4 PNGs actually used are copied into public/assets/mobile-controls/.
+/mobile-controls-1 (3)/

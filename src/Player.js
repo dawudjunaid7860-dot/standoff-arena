@@ -87,13 +87,15 @@ export class Player {
     if (this.isDown) return;
 
     const pos = this.model.position;
-    const forward = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0);
-    const strafe = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
+    const { forward, strafe } = input.getMoveAxes();
+    const magnitude = Math.hypot(forward, strafe);
 
-    if (forward !== 0 || strafe !== 0) {
-      const len = Math.hypot(forward, strafe) || 1;
-      const moveX = (strafe / len) * MOVE_SPEED * delta;
-      const moveZ = (-forward / len) * MOVE_SPEED * delta;
+    // Unit-vector for keyboard (always full speed); proportional for a
+    // partially-deflected touch joystick, capped at magnitude 1 either way.
+    if (magnitude > 0.001) {
+      const speedScale = Math.min(magnitude, 1);
+      const moveX = (strafe / magnitude) * speedScale * MOVE_SPEED * delta;
+      const moveZ = (-forward / magnitude) * speedScale * MOVE_SPEED * delta;
       const resolved = resolveCollisions(pos.x + moveX, pos.z + moveZ, RADIUS, this.colliders);
       pos.x = clamp(resolved.x, this.bounds.minX, this.bounds.maxX);
       pos.z = clamp(resolved.z, this.bounds.minZ, this.bounds.maxZ);

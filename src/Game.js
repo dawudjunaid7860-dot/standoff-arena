@@ -5,11 +5,19 @@ import { Player } from './Player.js';
 import { Enemy } from './Enemy.js';
 import { Input } from './Input.js';
 import { HUD } from './HUD.js';
+import { TouchControls } from './TouchControls.js';
+import { clamp } from './utils.js';
 
-const PLAYER_SPAWN = new THREE.Vector3(0, 0, 28);
-const ENEMY_SPAWN = new THREE.Vector3(0, 0, -28);
+const PLAYER_SPAWN = new THREE.Vector3(0, 0, 20);
+const ENEMY_SPAWN = new THREE.Vector3(0, 0, -20);
 
-const CAMERA_OFFSET = new THREE.Vector3(0, 17, 11);
+// Camera looks down at this fixed angle (preserved from the reference image)
+// but slides along it and dollies in/out so both fighters stay framed,
+// instead of rigidly following the player alone.
+const CAMERA_DIRECTION = new THREE.Vector3(0, 17, 11).normalize();
+const CAMERA_MIN_DIST = 20;
+const CAMERA_MAX_DIST = 80;
+const CAMERA_ZOOM_FACTOR = 1.0;
 const ROUND_TIME = 120;
 const RESPAWN_DELAY = 1.8;
 
@@ -68,10 +76,42 @@ export class Game {
       this._mouseHeld = false;
     });
 
+    this.touchControls = new TouchControls(this.input, {
+      onReload: () => this.player.reload(),
+    });
+    this._setupOrientation();
+
     this.state = 'ready';
+    const instructions = this.touchControls.active
+      ? 'Left stick to move · Hold the right button to aim & fire · Tap RELOAD to reload'
+      : 'WASD to move · Mouse to aim · Click to shoot · R to reload';
+    document.querySelector('#start-screen p').textContent = instructions;
     this.hud.showStart(() => this._begin());
 
     this._animate();
+  }
+
+  // iOS Safari has no working screen.orientation.lock() for a plain web
+  // page, so the reliable cross-device approach is: try the lock where the
+  // API exists (Android/PWA contexts), and otherwise block play with a
+  // "rotate your device" prompt whenever a touch device is in portrait.
+  _setupOrientation() {
+    if (screen.orientation?.lock) {
+      screen.orientation.lock('landscape').catch(() => {});
+    }
+
+    this._orientationBlocked = false;
+    if (!this.touchControls.active) return;
+
+    const prompt = document.getElementById('rotate-prompt');
+    const checkOrientation = () => {
+      this._orientationBlocked = window.innerHeight > window.innerWidth;
+      prompt.classList.toggle('hidden', !this._orientationBlocked);
+    };
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('orientationchange', checkOrientation);
+    window.matchMedia('(orientation: portrait)').addEventListener('change', checkOrientation);
+    checkOrientation();
   }
 
   _begin() {
@@ -135,8 +175,7 @@ export class Game {
     this._playerRespawnTimer = 0;
     this._enemyRespawnTimer = 0;
     this._roundTime = ROUND_TIME;
-    this.camera.position.copy(PLAYER_SPAWN).add(CAMERA_OFFSET);
-    this.camera.lookAt(PLAYER_SPAWN.x, 1, PLAYER_SPAWN.z);
+    this._updateCamera();
     this._refreshHud();
     this.hud.setTimer(this._roundTime);
   }
@@ -208,25 +247,42 @@ export class Game {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   }
 
+  // Frames both fighters: follows their midpoint and dollies back along a
+  // fixed viewing angle as they spread apart, instead of rigidly tracking
+  // the player alone (which left the enemy off-screen whenever they were
+  // more than a few units away).
   _updateCamera() {
-    this.camera.position.set(
-      this.player.position.x + CAMERA_OFFSET.x,
-      this.player.position.y + CAMERA_OFFSET.y,
-      this.player.position.z + CAMERA_OFFSET.z
+    const midX = (this.player.position.x + this.enemy.position.x) / 2;
+    const midZ = (this.player.position.z + this.enemy.position.z) / 2;
+    const separation = Math.hypot(
+      this.player.position.x - this.enemy.position.x,
+      this.player.position.z - this.enemy.position.z
     );
-    this.camera.lookAt(this.player.position.x, 1, this.player.position.z);
+    const dist = clamp(CAMERA_MIN_DIST + separation * CAMERA_ZOOM_FACTOR, CAMERA_MIN_DIST, CAMERA_MAX_DIST);
+
+    this.camera.position.set(
+      midX + CAMERA_DIRECTION.x * dist,
+      CAMERA_DIRECTION.y * dist,
+      midZ + CAMERA_DIRECTION.z * dist
+    );
+    this.camera.lookAt(midX, 1, midZ);
   }
 
   _animate() {
     requestAnimationFrame(() => this._animate());
     const delta = Math.min(this.clock.getDelta(), 0.1);
 
-    this._updateAimPoint();
+    if (this.touchControls?.active) {
+      // No mouse on a touchscreen: aim toward the opponent while the fire button is held.
+      this._aimPoint.copy(this.enemy.position);
+    } else {
+      this._updateAimPoint();
+    }
 
-    if (this.state === 'playing') {
+    if (this.state === 'playing' && !this._orientationBlocked) {
       this.player.update(delta, this.input, this._aimPoint);
       if (this.input.isDown('KeyR')) this.player.reload();
-      if (this._mouseHeld) this._onFire();
+      if (this._mouseHeld || this.touchControls?.firing) this._onFire();
 
       this.enemy.update(delta, this.player.position, this.player.model, this.arena.obstacleModels);
       const shot = this.enemy.consumeShot();

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Standoff Arena</title>
   <link rel="stylesheet" href="/src/style.css" />
 </head>
@@ -52,6 +52,18 @@
   </div>
 
   <div id="damage-flash"></div>
+
+  <div id="touch-controls" class="hidden">
+    <div id="joystick-base">
+      <div id="joystick-nub"></div>
+    </div>
+    <button id="reload-button">RELOAD</button>
+    <button id="fire-button"></button>
+  </div>
+
+  <div id="rotate-prompt" class="hidden">
+    <p>Rotate your device to landscape to play</p>
+  </div>
 
   <div id="start-screen" class="overlay">
     <h1>STANDOFF ARENA</h1>
