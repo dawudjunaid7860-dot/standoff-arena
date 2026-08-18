@@ -36,3 +36,24 @@ export function enableShadows(object) {
 export function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
+
+export function isDescendantOf(object, ancestor) {
+  let o = object;
+  while (o) {
+    if (o === ancestor) return true;
+    o = o.parent;
+  }
+  return false;
+}
+
+// Deterministic PRNG so the map layout is reproducible across reloads
+// instead of reshuffling every time (Mulberry32).
+export function mulberry32(seed) {
+  let t = seed;
+  return function () {
+    t += 0x6d2b79f5;
+    let r = Math.imul(t ^ (t >>> 15), t | 1);
+    r ^= r + Math.imul(r ^ (r >>> 7), r | 61);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}

@@ -1,100 +1,183 @@
 import * as THREE from 'three';
-import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { ASSETS } from './AssetLoader.js';
-import { normalizeScale, clamp } from './utils.js';
+import { normalizeScale, placeOnGround, enableShadows, clamp, isDescendantOf } from './utils.js';
+import { attachPistol, MAG_SIZE, RESERVE_START, RELOAD_TIME, FIRE_COOLDOWN, DAMAGE } from './Weapon.js';
+import { resolveCollisions } from './Collision.js';
 
-const EYE_HEIGHT = 1.6;
-const MOVE_SPEED = 6;
-const FIRE_COOLDOWN = 0.28;
-const DAMAGE = 14;
+const HEIGHT = 1.8;
+const RADIUS = 0.42;
+const MOVE_SPEED = 7;
 const MAX_RANGE = 60;
+const CHEST_HEIGHT_FACTOR = 0.55;
+
+// If the model's front doesn't line up with the aim direction after
+// testing, nudge this by Math.PI or Math.PI / 2.
+const FACE_OFFSET = 0;
 
 export class Player {
-  constructor(camera, domElement, scene, bounds) {
-    this.camera = camera;
+  constructor(scene, bounds, colliders) {
     this.scene = scene;
     this.bounds = bounds;
+    this.colliders = colliders;
 
-    this.controls = new PointerLockControls(camera, domElement);
-    scene.add(this.controls.object);
+    this.model = null;
+    this.gun = null;
+    this._restGunZ = 0;
+    this._recoil = 0;
 
     this.maxHealth = 100;
     this.health = this.maxHealth;
-    this.cooldown = 0;
+    this.maxLives = 3;
+    this.lives = this.maxLives;
+    this.isDown = false;
 
+    this.magSize = MAG_SIZE;
+    this.ammo = MAG_SIZE;
+    this.reserve = RESERVE_START;
+    this.isReloading = false;
+    this._reloadTimer = 0;
+
+    this.cooldown = 0;
     this.raycaster = new THREE.Raycaster();
     this.raycaster.far = MAX_RANGE;
-
-    this.weapon = null;
-    this._recoil = 0;
-    this._restZ = 0;
+    this.aimPoint = new THREE.Vector3();
   }
 
-  async loadWeapon(assetLoader) {
-    const gun = await assetLoader.load(ASSETS.guns.pistol);
-    normalizeScale(gun, 0.32);
-    gun.rotation.y = Math.PI;
-    gun.position.set(0.28, -0.32, -0.55);
-    this.camera.add(gun);
-    this.weapon = gun;
-    this._restZ = gun.position.z;
+  async load(assetLoader, spawnPosition) {
+    const model = await assetLoader.load(ASSETS.characters.soldier);
+    normalizeScale(model, HEIGHT);
+    placeOnGround(model, spawnPosition.x, spawnPosition.z);
+    enableShadows(model);
+    this.scene.add(model);
+    this.model = model;
+
+    this.gun = await attachPistol(assetLoader, model, HEIGHT);
+    this._restGunZ = this.gun.position.z;
   }
 
   reset(spawnPosition) {
     this.health = this.maxHealth;
+    this.lives = this.maxLives;
+    this.isDown = false;
+    this.ammo = this.magSize;
+    this.reserve = RESERVE_START;
+    this.isReloading = false;
+    this._reloadTimer = 0;
     this.cooldown = 0;
-    this._recoil = 0;
-    this.camera.position.set(spawnPosition.x, EYE_HEIGHT, spawnPosition.z);
-    this.camera.rotation.set(0, 0, 0);
+    this._placeAt(spawnPosition);
   }
 
-  update(delta, input) {
-    if (this.controls.isLocked) {
-      const forward = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0);
-      const right = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
+  respawn(spawnPosition) {
+    this.health = this.maxHealth;
+    this.isDown = false;
+    this.ammo = this.magSize;
+    this.reserve = RESERVE_START;
+    this.isReloading = false;
+    this._reloadTimer = 0;
+    this._placeAt(spawnPosition);
+  }
 
-      if (forward !== 0 || right !== 0) {
-        const len = Math.hypot(forward, right) || 1;
-        this.controls.moveForward((forward / len) * MOVE_SPEED * delta);
-        this.controls.moveRight((right / len) * MOVE_SPEED * delta);
+  _placeAt(spawnPosition) {
+    this.model.position.set(spawnPosition.x, this.model.position.y, spawnPosition.z);
+    this.model.rotation.set(0, 0, 0);
+    this.model.visible = true;
+  }
+
+  update(delta, input, aimWorldPoint) {
+    if (this.isDown) return;
+
+    const pos = this.model.position;
+    const forward = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0);
+    const strafe = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
+
+    if (forward !== 0 || strafe !== 0) {
+      const len = Math.hypot(forward, strafe) || 1;
+      const moveX = (strafe / len) * MOVE_SPEED * delta;
+      const moveZ = (-forward / len) * MOVE_SPEED * delta;
+      const resolved = resolveCollisions(pos.x + moveX, pos.z + moveZ, RADIUS, this.colliders);
+      pos.x = clamp(resolved.x, this.bounds.minX, this.bounds.maxX);
+      pos.z = clamp(resolved.z, this.bounds.minZ, this.bounds.maxZ);
+    }
+
+    if (aimWorldPoint) {
+      this.aimPoint.copy(aimWorldPoint);
+      const dx = aimWorldPoint.x - pos.x;
+      const dz = aimWorldPoint.z - pos.z;
+      if (Math.hypot(dx, dz) > 0.05) {
+        this.model.rotation.y = Math.atan2(-dx, -dz) + FACE_OFFSET;
       }
-
-      const pos = this.camera.position;
-      pos.x = clamp(pos.x, this.bounds.minX, this.bounds.maxX);
-      pos.z = clamp(pos.z, this.bounds.minZ, this.bounds.maxZ);
-      pos.y = EYE_HEIGHT;
     }
 
     if (this.cooldown > 0) this.cooldown -= delta;
 
-    if (this.weapon && this._recoil > 0) {
-      this._recoil = Math.max(0, this._recoil - delta * 5);
-      this.weapon.position.z = this._restZ - this._recoil * 0.12;
+    if (this.isReloading) {
+      this._reloadTimer -= delta;
+      if (this._reloadTimer <= 0) this._finishReload();
+    }
+
+    if (this.gun && this._recoil > 0) {
+      this._recoil = Math.max(0, this._recoil - delta * 6);
+      this.gun.position.z = this._restGunZ + this._recoil * 0.08;
     }
   }
 
   canShoot() {
-    return this.controls.isLocked && this.cooldown <= 0 && this.health > 0;
+    return !this.isDown && this.cooldown <= 0 && !this.isReloading && this.ammo > 0;
   }
 
-  shoot(targetObject) {
+  // obstacles: solid props/walls that can block the shot before it reaches the target.
+  shoot(targetObject, obstacles) {
     this.cooldown = FIRE_COOLDOWN;
+    this.ammo -= 1;
     this._recoil = 1;
 
-    this.raycaster.setFromCamera({ x: 0, y: 0 }, this.camera);
-    const hits = this.raycaster.intersectObject(targetObject, true);
-    if (hits.length > 0) {
-      return { hit: true, damage: DAMAGE, point: hits[0].point };
+    const pos = this.model.position;
+    const origin = new THREE.Vector3(pos.x, HEIGHT * CHEST_HEIGHT_FACTOR, pos.z);
+    const dir = new THREE.Vector3(this.aimPoint.x - origin.x, 0, this.aimPoint.z - origin.z);
+    if (dir.lengthSq() < 0.0001) dir.set(0, 0, -1);
+    dir.normalize();
+
+    this.raycaster.set(origin, dir);
+    const hits = this.raycaster.intersectObjects([targetObject, ...(obstacles || [])], true);
+    if (hits.length > 0 && isDescendantOf(hits[0].object, targetObject)) {
+      return { hit: true, damage: DAMAGE, point: hits[0].point, origin };
     }
-    return { hit: false, point: null };
+    const point = hits.length > 0 ? hits[0].point : origin.clone().addScaledVector(dir, MAX_RANGE);
+    return { hit: false, point, origin };
+  }
+
+  canReload() {
+    return !this.isReloading && this.ammo < this.magSize && this.reserve > 0;
+  }
+
+  reload() {
+    if (!this.canReload()) return;
+    this.isReloading = true;
+    this._reloadTimer = RELOAD_TIME;
+  }
+
+  _finishReload() {
+    this.isReloading = false;
+    const needed = this.magSize - this.ammo;
+    const take = Math.min(needed, this.reserve);
+    this.ammo += take;
+    this.reserve -= take;
   }
 
   takeDamage(amount) {
+    if (this.isDown) return this.health;
     this.health = Math.max(0, this.health - amount);
     return this.health;
   }
 
+  loseLife() {
+    this.lives = Math.max(0, this.lives - 1);
+    this.isDown = true;
+    this.model.visible = false;
+    return this.lives;
+  }
+
   get position() {
-    return this.camera.position;
+    return this.model.position;
   }
 }

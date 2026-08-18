@@ -8,16 +8,43 @@
 </head>
 <body>
   <div id="hud">
-    <div id="crosshair"></div>
-
-    <div id="health-bars">
-      <div class="health-row player-health">
-        <span class="health-label">YOU</span>
-        <div class="health-bar-track"><div id="player-health-fill" class="health-bar-fill"></div></div>
+    <div id="player-card-player" class="player-card side-left team-green">
+      <div class="card-header">
+        <span class="card-title">PLAYER 1 <span class="team-tag">(GREEN)</span></span>
       </div>
-      <div class="health-row enemy-health">
-        <div class="health-bar-track"><div id="enemy-health-fill" class="health-bar-fill"></div></div>
-        <span class="health-label">ENEMY</span>
+      <div class="lives-row">LIVES: <span class="lives-value">3</span></div>
+      <div class="health-block">
+        <span class="health-label">HEALTH</span>
+        <div class="health-pips" id="pips-player"></div>
+      </div>
+      <div class="weapon-row">
+        <span class="weapon-icon">P</span>
+        <span class="weapon-name">PISTOL</span>
+        <span class="weapon-ammo">
+          <span class="ammo-current" id="ammo-current-player">8</span>/<span class="ammo-mag" id="ammo-mag-player">8</span>
+          <span class="ammo-reserve">[<span id="ammo-reserve-player">24</span>]</span>
+        </span>
+      </div>
+    </div>
+
+    <div id="timer-pill">TIME: <span id="timer-value">02:00</span></div>
+
+    <div id="player-card-enemy" class="player-card side-right team-red">
+      <div class="card-header">
+        <span class="card-title">PLAYER 2 <span class="team-tag">(RED)</span></span>
+      </div>
+      <div class="lives-row">LIVES: <span class="lives-value">3</span></div>
+      <div class="health-block">
+        <span class="health-label">HEALTH</span>
+        <div class="health-pips" id="pips-enemy"></div>
+      </div>
+      <div class="weapon-row">
+        <span class="weapon-icon">P</span>
+        <span class="weapon-name">PISTOL</span>
+        <span class="weapon-ammo">
+          <span class="ammo-current" id="ammo-current-enemy">8</span>/<span class="ammo-mag" id="ammo-mag-enemy">8</span>
+          <span class="ammo-reserve">[<span id="ammo-reserve-enemy">24</span>]</span>
+        </span>
       </div>
     </div>
 
@@ -28,7 +55,7 @@
 
   <div id="start-screen" class="overlay">
     <h1>STANDOFF ARENA</h1>
-    <p>WASD to move &middot; Mouse to aim &middot; Click to shoot</p>
+    <p>WASD to move &middot; Mouse to aim &middot; Click to shoot &middot; R to reload</p>
     <button id="start-button">Click to Start</button>
   </div>
 
